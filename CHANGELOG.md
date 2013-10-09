@@ -14,6 +14,10 @@ New modules:
 Misc changes:
 
 * TBA
+* 
+1.3.3 "Top of the World" (reprise) - October 9, 2013
+
+Additional fixes for accelerate mode.
 
 1.3.2 "Top of the World" (reprise) - September 19th, 2013
 
