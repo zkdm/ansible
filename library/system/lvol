@@ -42,7 +42,7 @@ options:
       according to lvcreate(8) --extents as a percentage of [VG|PVS|FREE];
       resizing is not supported with percentages.
   state:
-    choices: [ "present", "absent" ]
+    choices: [ "present", "absent", "snapshot" ]
     default: present
     description:
     - Control if the logical volume exists.
@@ -65,6 +65,12 @@ EXAMPLES = '''
 
 # Create a logical volume of 512g.
 - lvol: vg=firefly lv=test size=512g
+
+# Create a logical volume the size of all remaining space in the volume group
+- lvol: vg=firefly lv=test size=100%FREE
+
+# Create a logical volume snapshot of 2g.
+- lvol: vg=firefly lv=test-snap size=2g state=snapshot origin=test
 
 # Create a logical volume the size of all remaining space in the volume group
 - lvol: vg=firefly lv=test size=100%FREE
@@ -101,8 +107,9 @@ def main():
             vg=dict(required=True),
             lv=dict(required=True),
             size=dict(),
-            state=dict(choices=["absent", "present"], default='present'),
+            state=dict(choices=["absent", "present", "snapshot"], default='present'),
             force=dict(type='bool', default='no'),
+			origin=dict(),	
         ),
         supports_check_mode=True,
     )
@@ -112,6 +119,7 @@ def main():
     size = module.params['size']
     state = module.params['state']
     force = module.boolean(module.params['force'])
+    origin = module.params['origin']
     size_opt = 'L'
     size_unit = 'm'
 
@@ -172,9 +180,15 @@ def main():
     else:
         this_lv = None
 
-    if state == 'present' and not size:
+    if state == 'present' or 'snapshot' and not size:
         if this_lv is None:
             module.fail_json(msg="No size given.")
+        else:
+            module.exit_json(changed=False, vg=vg, lv=this_lv['name'], size=this_lv['size'])
+
+    if state == 'snapshot' and not origin:
+        if this_lv is None:
+            module.fail_json(msg="No origin given.")
         else:
             module.exit_json(changed=False, vg=vg, lv=this_lv['name'], size=this_lv['size'])
 
@@ -190,6 +204,18 @@ def main():
                     changed = True
                 else:
                     module.fail_json(msg="Creating logical volume '%s' failed" % lv, rc=rc, err=err)
+
+        if state == 'snapshot':
+			### create snapshot
+            if module.check_mode:
+                changed = True
+            else:
+                rc, _, err = module.run_command("lvcreate -s -n %s -%s %s%s %s/%s" % (lv, size_opt, size, size_unit, vg, origin))
+                if rc == 0:
+                    changed = True
+                else:
+                    module.fail_json(msg="Creating logical volume snapshot '%s' failed" % lv, rc=rc, err=err)
+		
     else:
         if state == 'absent':
             ### remove LV
